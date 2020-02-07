@@ -6,26 +6,16 @@ char str_format[16]; //Временная переменная для sprintf
 unsigned long Uptime; // Переменная хранит время работы в ms
  
 // Это все параметры которые можем менять в меню
-int DateDay = 1;
-int DateMonth = 1;
+int GearTooth = 24;
+int DividerCount = 4;
+
+boolean runGear = false;
+boolean runDivider = false;
  
 // Переменные для кнопок
 int const ButtonInterval = 200;	// Интервал срабатывания кнопки при удержании
 int	ButtonPress = 0;			// Код нажатой кнопки, или 0 если не нажата
 unsigned long	ButtonPressTime = 0; // Время на устройстве в которое была нажата кнопка
- 
-// Тип структуры данных описывающих пункт меню
-typedef struct _MenuItem {
-	String title;			// Имя меню
-	int &param;				// Ссылка на переменную значения
-	char format[16];		// Формат вывода значения переменной
-} MenuItem;
-
-// Меню
-MenuItem MenuItems[] = {
-	{ "D01: Date Day   ", DateDay,	"VAL: %02d" },
-	{ "D02: Date Month ", DateMonth,	"VAL: %02d" }
-};
 
 // Это переменные для работы меню
 int	MenuCurent = 0; // Выбранный пункт меню
@@ -33,8 +23,7 @@ int	MenuCount = 2; // Количество пунктов меню
  
 // Загрузка
 void setup() {
-	lcd.begin(16, 2); // Инициализируем дисплей
- 
+	lcd.begin(16, 2); // Инициализируем дисплей 
   ButtonClick(1);
 }
  
@@ -68,47 +57,64 @@ void ButtonClick(int ButtonId) {
 		if (ButtonId == 1) {
 		  ;	// Клик [Menu] Выход из меню 
 		}
-		if (ButtonId == 2) MenuCurent--;		// Клик [Prev] Позицию ниже
-		if (ButtonId == 3) MenuCurent++;		// Клик [Next] Позиция выше
+		if (ButtonId == 2) {
+		  MenuCurent--;		// Клик [Prev] Позицию ниже
+		}
+		if (ButtonId == 3) {
+		  MenuCurent++;		// Клик [Next] Позиция выше
+		}
 		MenuCurent = constrain(MenuCurent, 0, MenuCount - 1);	// Ограничиваем меню
     
 		if (ButtonId == 4) {
 		  // Клик [+] Увеличиваем значение выбранного параметра 
       if (MenuCurent == 0) {
-        SetDateDay(1);
+        setGearTooth(1);
       }
       if (MenuCurent == 1) {
-        SetDateMonth(1);
+        setDividerCount(1);
       }
 		}
 		if (ButtonId == 5) {
 		  // Клик [-] Уменьшаем значение выбранного параметра 
       if (MenuCurent == 0) {
-        SetDateDay(-1);
+        setGearTooth(-1);
       }
       if (MenuCurent == 1) {
-        SetDateMonth(-1);
+        setDividerCount(-1);
       }      
 		}
 
- 
-	lcd.clear();
-	lcd.setCursor(0, 0);
-	lcd.print(MenuItems[MenuCurent].title); // Выводим заголовок
-	lcd.setCursor(0, 1);
-	sprintf(str_format, MenuItems[MenuCurent].format, MenuItems[MenuCurent].param); // Форматируем вывод знечения
-	lcd.print(str_format); // Выводим значение
- 
+   // Отрисовка пунков меню
+   if (MenuCurent == 0) {
+    printMenuGear(ButtonId);
+   }
+   if (MenuCurent == 1) {
+    printMenuDivider(ButtonId);
+   }
+
+}
+
+void printMenuGear(int ButtonId) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Gear");
+  lcd.setCursor(0, 1);
+  lcd.print("Tooth: " + String(GearTooth) + "   ");  
+}
+
+void printMenuDivider(int ButtonId) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Divider");
+  lcd.setCursor(0, 1);
+  lcd.print("Count: " + String(DividerCount) + "   ");   
 }
  
- 
-// Функции вызываемые для изменения значений переменных
- 
-void SetDateDay(int Concat) {
-	DateDay = constrain(DateDay + Concat, 1, 31); // Изменяем с ограничением
+void setGearTooth(int Concat) {
+	GearTooth = constrain(GearTooth + Concat, 6, 120); // Изменяем с ограничением
 }
  
-void SetDateMonth(int Concat) {
-	DateMonth = constrain(DateMonth + Concat, 1, 12);
+void setDividerCount(int Concat) {
+	DividerCount = constrain(DividerCount + Concat, 2, 30);
 }
  
