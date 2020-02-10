@@ -1,13 +1,17 @@
 #include <LiquidCrystal.h>
  
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// https://arduinobasics.blogspot.com/2019/05/sprintf-function.html
 char str_format[16]; //Временная переменная для sprintf
 
 unsigned long Uptime; // Переменная хранит время работы в ms
  
 // Это все параметры которые можем менять в меню
 int GearTooth = 24;
-int DividerCount = 4;
+
+int DividerTotal = 4;
+int DividerCurrent = 0;
 
 boolean runGear = false;
 boolean runDivider = false;
@@ -45,7 +49,7 @@ void loop() {
 		}
 		if (ButtonPressTime + ButtonInterval < Uptime) { // Если кнопка была нажата раньше чем ButtonInterval ms назад
 			ButtonPressTime = 0; // Сбрасываем время
-			ButtonPress = 0; // Отжимаем кнопку (это имитуреет многократное нажатие с интервалом ButtonInterval если кнопку держать)
+			ButtonPress = 0; // Отжимаем кнопку (это имитирует многократное нажатие с интервалом ButtonInterval если кнопку держать)
 		}
 	}
  
@@ -55,8 +59,15 @@ void loop() {
 void ButtonClick(int ButtonId) {
 
 		if (ButtonId == 1) {
-		  ;	// Клик [Menu] Выход из меню 
+		  // Клик [Menu] 
+      if (MenuCurent == 0) {
+       runGearFunction();
+      }
+      if (MenuCurent == 1) {
+       runDividerFunction();
+      }
 		}
+   
 		if (ButtonId == 2) {
 		  MenuCurent--;		// Клик [Prev] Позицию ниже
 		}
@@ -71,7 +82,7 @@ void ButtonClick(int ButtonId) {
         setGearTooth(1);
       }
       if (MenuCurent == 1) {
-        setDividerCount(1);
+        setDividerTotal(1);
       }
 		}
 		if (ButtonId == 5) {
@@ -80,41 +91,71 @@ void ButtonClick(int ButtonId) {
         setGearTooth(-1);
       }
       if (MenuCurent == 1) {
-        setDividerCount(-1);
+        setDividerTotal(-1);
       }      
 		}
 
    // Отрисовка пунков меню
    if (MenuCurent == 0) {
-    printMenuGear(ButtonId);
+    printMenuGear();
    }
    if (MenuCurent == 1) {
-    printMenuDivider(ButtonId);
+    printMenuDivider();
    }
 
 }
 
-void printMenuGear(int ButtonId) {
+void printMenuGear() {
+  char statusText = "[off]";
+  if (runGear) {
+    statusText = "[on] ";
+  } 
+  
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Gear");
+  sprintf(str_format, "Gear run: %s", statusText);
+  lcd.print(str_format);
   lcd.setCursor(0, 1);
-  lcd.print("Tooth: " + String(GearTooth) + "   ");  
+  sprintf(str_format, "Tooth: %3d", GearTooth);
+  lcd.print(str_format);  
 }
 
-void printMenuDivider(int ButtonId) {
+void printMenuDivider() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Divider");
   lcd.setCursor(0, 1);
-  lcd.print("Count: " + String(DividerCount) + "   ");   
+  sprintf(str_format, "Total: %3d | %3d", DividerTotal, DividerCurrent);
+  lcd.print(str_format);
 }
  
 void setGearTooth(int Concat) {
-	GearTooth = constrain(GearTooth + Concat, 6, 120); // Изменяем с ограничением
+  // Изменяем с ограничением
+  if (!runGear) {
+	  GearTooth = constrain(GearTooth + Concat, 6, 240); 
+  }
 }
  
-void setDividerCount(int Concat) {
-	DividerCount = constrain(DividerCount + Concat, 2, 30);
+void setDividerTotal(int Concat) {
+  // Изменяем с ограничением
+  if (!runDivider) {
+	  DividerTotal = constrain(DividerTotal + Concat, 2, 240);
+  }
 }
+
+void runGearFunction() {
+  runGear = !runGear;
+}
+
+void runDividerFunction() {
+  if (DividerCurrent <= DividerTotal) {
+    DividerCurrent++;
+    runDivider = true;
+  } else {
+    DividerCurrent = 0;
+    runDivider = false;
+  }
+}
+
+
  
