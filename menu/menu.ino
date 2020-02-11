@@ -2,12 +2,14 @@
  
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
+//---------- Временные переменные для sprintf ----------
 // https://arduinobasics.blogspot.com/2019/05/sprintf-function.html
-char str_format[16]; //Временная переменная для sprintf
+char LCD_Row_1[16];
+char LCD_Row_2[16];
 
-unsigned long Uptime; // Переменная хранит время работы в ms
+unsigned long Uptime;               // Переменная хранит время работы в ms
  
-// Это все параметры которые можем менять в меню
+//---------- Это все параметры которые можем менять в меню ----------
 int GearTooth = 24;
 
 int DividerTotal = 4;
@@ -16,22 +18,54 @@ int DividerCurrent = 0;
 boolean runGear = false;
 boolean runDivider = false;
  
-// Переменные для кнопок
-int const ButtonInterval = 200;	// Интервал срабатывания кнопки при удержании
-int	ButtonPress = 0;			// Код нажатой кнопки, или 0 если не нажата
-unsigned long	ButtonPressTime = 0; // Время на устройстве в которое была нажата кнопка
+//----------  Buttons parameters ----------
+int const ButtonInterval = 200;	    // Интервал срабатывания кнопки при удержании
+int	ButtonPress = 0;			          // Код нажатой кнопки, или 0 если не нажата
+unsigned long	ButtonPressTime = 0;  // Время на устройстве в которое была нажата кнопка
 
-// Это переменные для работы меню
-int	MenuCurent = 0; // Выбранный пункт меню
-int	MenuCount = 2; // Количество пунктов меню
+//----------  Menu parameters ----------
+int	MenuCurrent = 0;                // Выбранный пункт меню
+int MenuCount = 2;                  // Количество пунктов меню
+
+// Define menu screen IDs
+#define MenuGear  0
+#define MenuDivider  1
+
+//----------  Define motor parameters ----------
+#define motorSTEPpin   40         // Output signal to step the motor
+#define motorDIRpin    41         // Output signal to set direction
+#define motorENABLEpin 42         // Output pin to power up the motor
+
+#define StepsPerRevolution 200    // Number of steps it takes the motor to do one full revolution
+#define Microsteps 8              // Depending on your stepper driver, it may support microstepping
+#define GearRatio 1               // Gear ratio "Motor" <-> "Dividing head"
+
+#define pulseWidth          2     // Length of time for one step pulse
+#define motorSpeedDelay     0     // Zero here means fast, as in no delay
+
+#define CW HIGH                   // Define direction of rotation
+#define CCW LOW                   // If rotation needs to be reversed, swap HIGH and LOW here
+
+unsigned long motorSteps;
+unsigned long stepsPerDiv;
+
  
-// Загрузка
+//---------- Загрузка ----------
 void setup() {
 	lcd.begin(16, 2); // Инициализируем дисплей 
-  ButtonClick(1);
+  printMenuGear();
+
+  pinMode(motorSTEPpin, OUTPUT);
+  pinMode(motorDIRpin, OUTPUT);
+  pinMode(motorENABLEpin, OUTPUT);
+  
+  digitalWrite(motorENABLEpin, LOW);
+  digitalWrite(motorDIRpin, CW);
+
+  motorSteps = StepsPerRevolution * Microsteps * GearRatio;
 }
  
-// Главный цикл
+//---------- Главный цикл ----------
 void loop() {
   Uptime = millis(); // Сохраняем время работы каждый цикл
 
@@ -55,89 +89,83 @@ void loop() {
  
 }
  
-// Обработка нажатия кнопки
+//---------- Обработка нажатия кнопки ----------
 void ButtonClick(int ButtonId) {
 
 		if (ButtonId == 1) {
 		  // Клик [Menu] 
-      if (MenuCurent == 0) {
+      if (MenuCurrent == MenuGear) {
        runGearFunction();
       }
-      if (MenuCurent == 1) {
+      if (MenuCurrent == MenuDivider) {
        runDividerFunction();
       }
 		}
    
 		if (ButtonId == 2) {
-		  MenuCurent--;		// Клик [Prev] Позицию ниже
+		  MenuCurrent--;		// Клик [Prev] Позицию ниже
 		}
 		if (ButtonId == 3) {
-		  MenuCurent++;		// Клик [Next] Позиция выше
+		  MenuCurrent++;		// Клик [Next] Позиция выше
 		}
-		MenuCurent = constrain(MenuCurent, 0, MenuCount - 1);	// Ограничиваем меню
+		MenuCurrent = constrain(MenuCurrent, 0, MenuCount - 1);	// Ограничиваем меню
     
 		if (ButtonId == 4) {
 		  // Клик [+] Увеличиваем значение выбранного параметра 
-      if (MenuCurent == 0) {
+      if (MenuCurrent == MenuGear) {
         setGearTooth(1);
       }
-      if (MenuCurent == 1) {
+      if (MenuCurrent == MenuDivider) {
         setDividerTotal(1);
       }
 		}
 		if (ButtonId == 5) {
 		  // Клик [-] Уменьшаем значение выбранного параметра 
-      if (MenuCurent == 0) {
+      if (MenuCurrent == MenuGear) {
         setGearTooth(-1);
       }
-      if (MenuCurent == 1) {
+      if (MenuCurrent == MenuDivider) {
         setDividerTotal(-1);
       }      
 		}
 
    // Отрисовка пунков меню
-   if (MenuCurent == 0) {
+   if (MenuCurrent == MenuGear) {
     printMenuGear();
    }
-   if (MenuCurent == 1) {
+   if (MenuCurrent == MenuDivider) {
     printMenuDivider();
    }
 
 }
 
-void printMenuGear() {
-  char statusText = "[off]";
-  if (runGear) {
-    statusText = "[on] ";
-  } 
-  
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  sprintf(str_format, "Gear run: %s", statusText);
-  lcd.print(str_format);
-  lcd.setCursor(0, 1);
-  sprintf(str_format, "Tooth: %3d", GearTooth);
-  lcd.print(str_format);  
+void printMenuGear() { 
+  sprintf(LCD_Row_1, "Gear: %s   ", (runGear == true) ? "[ON] " : "[OFF]");
+  sprintf(LCD_Row_2, "Tooth: %3d", GearTooth);
+  printLcd();
 }
 
 void printMenuDivider() {
+  sprintf(LCD_Row_1, "Divider: %s", (runDivider == true) ? "[ON] " : "[OFF]");
+  sprintf(LCD_Row_2, "Parts: %3d | %3d", DividerTotal, DividerCurrent);
+  printLcd();
+}
+
+void printLcd() {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Divider");
+  lcd.print(LCD_Row_1);
   lcd.setCursor(0, 1);
-  sprintf(str_format, "Total: %3d | %3d", DividerTotal, DividerCurrent);
-  lcd.print(str_format);
+  lcd.print(LCD_Row_2);
 }
  
 void setGearTooth(int Concat) {
-  // Изменяем с ограничением
   if (!runGear) {
 	  GearTooth = constrain(GearTooth + Concat, 6, 240); 
   }
 }
  
 void setDividerTotal(int Concat) {
-  // Изменяем с ограничением
   if (!runDivider) {
 	  DividerTotal = constrain(DividerTotal + Concat, 2, 240);
   }
@@ -151,11 +179,31 @@ void runDividerFunction() {
   if (DividerCurrent <= DividerTotal) {
     DividerCurrent++;
     runDivider = true;
+    digitalWrite(motorENABLEpin, HIGH);
+
+    stepsPerDiv = (motorSteps / DividerTotal);
+    moveMotor(stepsPerDiv, CW);
+        
   } else {
     DividerCurrent = 0;
     runDivider = false;
+    digitalWrite(motorENABLEpin, LOW);
   }
 }
+
+void moveMotor(unsigned long steps, int dir) {
+  unsigned long i;
+   
+  for (i=0; i<steps; i++) {
+    digitalWrite(motorDIRpin, dir);
+    digitalWrite(motorSTEPpin, HIGH);
+    delay(pulseWidth);
+    digitalWrite(motorSTEPpin, LOW);
+    delay(motorSpeedDelay);
+  }  
+  
+  return;
+} 
 
 
  
