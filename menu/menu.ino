@@ -1,4 +1,6 @@
+
 #include <LiquidCrystal.h>
+#include <AccelStepper.h>
  
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
@@ -49,6 +51,8 @@ int MenuCount = 2;                  // Количество пунктов ме�
 unsigned long motorSteps;
 unsigned long stepsPerDiv;
 
+AccelStepper stepper(AccelStepper::DRIVER, motorSTEPpin, motorDIRpin); 
+
  
 //---------- Загрузка ----------
 void setup() {
@@ -61,6 +65,9 @@ void setup() {
   
   digitalWrite(motorENABLEpin, LOW);
   digitalWrite(motorDIRpin, CW);
+  
+  stepper.setMaxSpeed(6000);
+  stepper.setAcceleration(300);
 
   motorSteps = StepsPerRevolution * Microsteps * GearRatio;
 }
@@ -183,6 +190,7 @@ void runDividerFunction() {
 
     stepsPerDiv = (motorSteps / DividerTotal);
     moveMotor(stepsPerDiv, CW);
+    //moveMotorAccel(stepsPerDiv, CW);
         
   } else {
     DividerCurrent = 0;
@@ -205,5 +213,21 @@ void moveMotor(unsigned long steps, int dir) {
   return;
 } 
 
+void moveMotorAccel(unsigned long steps, int dir) {
+  int orientation;
+  
+  if (dir == CW) {
+    orientation = 1;
+  } else {
+    orientation = -1;
+  }
+  
+  if (stepper.distanceToGo() == 0) { //проверка, отработал ли двигатель предыдущее движение
+    stepper.move(steps * orientation); //устанавливает следующее перемещение на X шагов (если "orientation" равно -1 будет перемещаться -X (в противоположном направлении))
+  }
+  stepper.runToPosition();
+  
+  return;
+} 
 
  
