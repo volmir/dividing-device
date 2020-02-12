@@ -266,20 +266,22 @@ void calcTurnsPerMinute() {
   }
 }
 
-void runGearTracking() {
-  unsigned long steps = 0;
-  unsigned long spindleTurns = 0;
+void runGearTracking() {  
+  unsigned long spindleTurns = 0;  
+  unsigned long encoderCounterCurr = 0;
 
-  spindleTurns = encoderCounter - encoderCounterPrev;
+  encoderCounterCurr = encoderCounter;  
+  spindleTurns = encoderCounterCurr - encoderCounterPrev;
+  
   if (spindleTurns > 0) {
-    
+    unsigned long steps = 0;    
     steps = round(spindleTurns / encoderStepsPerTurn / gearTooth * motorSteps);
     
     if (steps > 0) {      
       moveMotor(steps, CW); // проворачиваем шестерню на необходимое число шагов
       //moveMotorAccel(steps, CW);
 
-      encoderCounterPrev = encoderCounter; // запоминаем количество шагов
+      encoderCounterPrev = encoderCounterCurr; // запоминаем количество шагов
     }
   }
 }
