@@ -11,7 +11,7 @@ char lcdRow2[16];
 
 unsigned long uptime;               // Переменная хранит время работы в ms
 
-//---------- Это все параметры которые можем менять в меню ----------
+//---------- Параметры которые можно задать в меню ----------
 int gearTooth = 24;
 
 int dividerTotal = 4;
@@ -20,27 +20,26 @@ int dividerCurrent = 0;
 boolean runGear = false;
 boolean runDivider = false;
 
-//----------  Buttons parameters ----------
+//----------  Нажатие кнопок ----------
 int const buttonInterval = 200;	    // Интервал срабатывания кнопки при удержании
 int	buttonPress = 0;			          // Код нажатой кнопки, или 0 если не нажата
 unsigned long	buttonPressTime = 0;  // Время на устройстве в которое была нажата кнопка
 
-//----------  Menu parameters ----------
+//----------  Меню ----------
 int	menuCurrent = 0;                // Выбранный пункт меню
 int menuCount = 2;                  // Количество пунктов меню
 
-// Define menu screen IDs
-#define menuGear  0
-#define menuDivider  1
+#define MENU_GEAR       0           // Пункт меню "Нарезание зубьев"
+#define MENU_DIVIDER    1           // Пункт меню "Деление окружности на части" 
 
-//----------  Define motor parameters ----------
+//---------- Настройки шагового двигателя ----------
 #define motorStepPin   40           // Output signal to step the motor
 #define motorDirPin    41           // Output signal to set direction
 #define motorEnablePin 42           // Output pin to power up the motor
 
 #define stepsPerRevolution 200      // Number of steps it takes the motor to do one full revolution
 #define microsteps 8                // Depending on your stepper driver, it may support microstepping
-#define gearRatio 1                 // Gear ratio "Motor" <-> "Dividing head"
+#define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
 
 #define pulseWidth          2       // Length of time for one step pulse
 #define motorSpeedDelay     0       // Zero here means fast, as in no delay
@@ -53,13 +52,14 @@ unsigned long stepsPerDiv;
 
 AccelStepper stepper(AccelStepper::DRIVER, motorStepPin, motorDirPin);
 
-//---------- Энкодер, обороты, синхронизация ----------
+//---------- Энкодер, синхронизация ----------
+#define interruptPin    2                 // Контакт к которому подключен датчик энкодера
+unsigned long encoderCounter = 0;         // Счетчик шагов энкодера
+unsigned long encoderCounterPrev = 0;     // Предыдущее число шагов энкодера
+unsigned int encoderStepsPerTurn = 60;    // Разрешение энкодера (количество линий на полный оброт)
 
-#define interruptPin    2           // контакт к которому подключен датчик
-unsigned long encoderCounter = 0;
-unsigned int encoderStepsPerTurn = 120;
-
-unsigned long encoderCounterLast = 0;
+//---------- Подсчет количества оборотов шпинделя ----------
+unsigned long turnsCounterPrev = 0;
 unsigned int turnsPerMinute = 0;
 unsigned long turnsTimeLast = 0;
 
@@ -83,7 +83,7 @@ void setup() {
   motorSteps = stepsPerRevolution * microsteps * gearRatio;
 
   pinMode(interruptPin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), encoderTick, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(interruptPin), encoderTick, RISING);
 }
 
 //---------- Главный цикл ----------
@@ -91,7 +91,8 @@ void loop() {
   uptime = millis(); // Сохраняем время работы каждый цикл
 
   if (runGear) {
-    calcTurnOver();
+    runGearTracking();
+    calcTurnsPerMinute();
   }
 
   if (buttonPress == 0) { // Если кнопки не были нажаты ранее
@@ -118,12 +119,12 @@ void loop() {
 void ButtonClick(int buttonId) {
 
   if (buttonId == 1) {
-    // Клик [Menu]
-    if (menuCurrent == menuGear) {
-      runGearFunction();
+    // Клик [Select]
+    if (menuCurrent == MENU_GEAR) {
+      toggleGearOption();
     }
-    if (menuCurrent == menuDivider) {
-      runDividerFunction();
+    if (menuCurrent == MENU_DIVIDER) {
+      runDividerOption();
     }
   }
 
@@ -137,28 +138,28 @@ void ButtonClick(int buttonId) {
 
   if (buttonId == 4) {
     // Клик [+] Увеличиваем значение выбранного параметра
-    if (menuCurrent == menuGear) {
+    if (menuCurrent == MENU_GEAR) {
       setGearTooth(1);
     }
-    if (menuCurrent == menuDivider) {
+    if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(1);
     }
   }
   if (buttonId == 5) {
     // Клик [-] Уменьшаем значение выбранного параметра
-    if (menuCurrent == menuGear) {
+    if (menuCurrent == MENU_GEAR) {
       setGearTooth(-1);
     }
-    if (menuCurrent == menuDivider) {
+    if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(-1);
     }
   }
 
   // Отрисовка пунков меню
-  if (menuCurrent == menuGear) {
+  if (menuCurrent == MENU_GEAR) {
     printMenuGear();
   }
-  if (menuCurrent == menuDivider) {
+  if (menuCurrent == MENU_DIVIDER) {
     printMenuDivider();
   }
 
@@ -196,11 +197,11 @@ void setDividerTotal(int concat) {
   }
 }
 
-void runGearFunction() {
+void toggleGearOption() {
   runGear = !runGear;
 }
 
-void runDividerFunction() {
+void runDividerOption() {
   if (dividerCurrent <= dividerTotal) {
     dividerCurrent++;
     runDivider = true;
@@ -252,15 +253,33 @@ void encoderTick() {
   encoderCounter++;
 }
 
-void calcTurnOver() {
-  // если прошло 200мс или более, то начинаем расчёт 
-  if ((millis() - turnsTimeLast) >= 200) {    
-    turnsPerMinute = ((encoderCounter - encoderCounterLast) / encoderStepsPerTurn) * 60;
-    
-    encoderCounterLast = encoderCounter; // запоминаем количество оборотов
+void calcTurnsPerMinute() {
+  // если прошло 200мс или более, то начинаем расчёт
+  if ((millis() - turnsTimeLast) >= 200) {
+    turnsPerMinute = ((encoderCounter - turnsCounterPrev) / encoderStepsPerTurn) * 60;
+
+    turnsCounterPrev = encoderCounter; // запоминаем количество шагов
     turnsTimeLast = millis(); // запоминаем время расчёта
 
-    menuCurrent = menuGear;
+    menuCurrent = MENU_GEAR;
     printMenuGear();
+  }
+}
+
+void runGearTracking() {
+  unsigned long steps = 0;
+  unsigned long spindleTurns = 0;
+
+  spindleTurns = encoderCounter - encoderCounterPrev;
+  if (spindleTurns > 0) {
+    
+    steps = round(spindleTurns / encoderStepsPerTurn / gearTooth * motorSteps);
+    
+    if (steps > 0) {      
+      moveMotor(steps, CW); // проворачиваем шестерню на необходимое число шагов
+      //moveMotorAccel(steps, CW);
+
+      encoderCounterPrev = encoderCounter; // запоминаем количество шагов
+    }
   }
 }
