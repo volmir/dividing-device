@@ -42,7 +42,7 @@ int menuCount = 2;                  // Количество пунктов ме�
 #define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
 
 #define pulseWidth          2       // Length of time for one step pulse
-#define motorSpeedDelay     0       // Zero here means fast, as in no delay
+#define pulseDelay          0       // Zero here means fast, as in no delay
 
 #define CW HIGH                     // Define direction of rotation
 #define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
@@ -202,7 +202,7 @@ void toggleGearOption() {
 }
 
 void runDividerOption() {
-  if (dividerCurrent <= dividerTotal) {
+  if (dividerCurrent < dividerTotal) {
     dividerCurrent++;
     runDivider = true;
     digitalWrite(motorEnablePin, HIGH);
@@ -216,6 +216,9 @@ void runDividerOption() {
     runDivider = false;
     digitalWrite(motorEnablePin, LOW);
   }
+
+  menuCurrent = MENU_DIVIDER;
+  printMenuDivider();
 }
 
 void moveMotor(unsigned long steps, int dir) {
@@ -226,7 +229,7 @@ void moveMotor(unsigned long steps, int dir) {
     digitalWrite(motorStepPin, HIGH);
     delay(pulseWidth);
     digitalWrite(motorStepPin, LOW);
-    delay(motorSpeedDelay);
+    delay(pulseDelay);
   }
 
   return;
