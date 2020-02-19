@@ -41,7 +41,7 @@ int menuCount = 2;                  // Количество пунктов ме�
 #define microsteps 4                // Depending on your stepper driver, it may support microstepping
 #define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
 
-#define pulseWidth          2       // Length of time for one step pulse
+#define pulseWidth          1       // Length of time for one step pulse
 #define pulseDelay          0       // Zero here means fast, as in no delay
 
 #define CW HIGH                     // Define direction of rotation
@@ -53,14 +53,15 @@ unsigned long stepsPerDiv;
 AccelStepper stepper(AccelStepper::DRIVER, motorStepPin, motorDirPin);
 
 //---------- Энкодер, синхронизация ----------
-#define interruptPin    21                 // Контакт к которому подключен датчик энкодера
-unsigned long encoderCounter = 0;         // Счетчик шагов энкодера
-unsigned long encoderCounterPrev = 0;     // Предыдущее число шагов энкодера
-unsigned int encoderStepsPerTurn = 45;    // Разрешение энкодера (количество линий на полный оброт)
+#define interruptPin    21                  // Контакт к которому подключен датчик энкодера
+unsigned long encoderCounter = 0;           // Счетчик шагов энкодера
+unsigned long encoderCounterPrev = 0;       // Предыдущее число шагов энкодера
+unsigned int encoderStepsPerTurn = 500;     // Разрешение энкодера (количество линий на полный оброт)
 
 //---------- Подсчет количества оборотов шпинделя ----------
+#define turnsCalcInterval     200           // Интервал в миллисекундах за который подсчитываются обороты шпинделя   
 unsigned long turnsCounterPrev = 0;
-unsigned int turnsPerMinute = 0;
+unsigned long turnsPerMinute = 0;
 unsigned long turnsTimeLast = 0;
 
 
@@ -87,7 +88,7 @@ void setup() {
 }
 
 //---------- Главный цикл ----------
-void loop() {
+void loop() {   
   uptime = millis(); // Сохраняем время работы каждый цикл
 
   if (runGear) {
@@ -210,7 +211,6 @@ void runDividerOption() {
     stepsPerDiv = (motorSteps / dividerTotal);
     moveMotor(stepsPerDiv, CW);
     //moveMotorAccel(stepsPerDiv, CW);
-
   } else {
     dividerCurrent = 0;
     runDivider = false;
@@ -219,6 +219,11 @@ void runDividerOption() {
 
   menuCurrent = MENU_DIVIDER;
   printMenuDivider();
+
+  /* --------- Divider menu bug -------- */
+  sprintf(lcdRow1, "Divider: %s", (runDivider == true) ? "[ON] " : "[OFF]");
+  lcd.setCursor(0, 0);
+  lcd.print(lcdRow1);
 }
 
 void moveMotor(unsigned long steps, int dir) {
@@ -257,10 +262,10 @@ void encoderTick() {
 }
 
 void calcTurnsPerMinute() {
-  // если прошло 200мс или более, то начинаем расчёт
-  if ((millis() - turnsTimeLast) >= 200) {
-    turnsPerMinute = ((encoderCounter - turnsCounterPrev) / encoderStepsPerTurn) * 60;
-
+  // если прошло turnsCalcInterval мс или более, то начинаем расчёт
+  if ((millis() - turnsTimeLast) >= turnsCalcInterval) {
+    turnsPerMinute = 60 * (1000 / turnsCalcInterval) * (encoderCounter - turnsCounterPrev) / encoderStepsPerTurn;
+ 
     turnsCounterPrev = encoderCounter; // запоминаем количество шагов
     turnsTimeLast = millis(); // запоминаем время расчёта
 
@@ -278,8 +283,8 @@ void runGearTracking() {
   
   if (spindleTurns > 0) {
     unsigned long steps = 0;    
-    steps = round(spindleTurns / encoderStepsPerTurn / gearTooth * motorSteps);
-    
+    steps = round(motorSteps * spindleTurns / encoderStepsPerTurn / gearTooth);
+
     if (steps > 0) {      
       moveMotor(steps, CW); // проворачиваем шестерню на необходимое число шагов
       //moveMotorAccel(steps, CW);
@@ -288,4 +293,3 @@ void runGearTracking() {
     }
   }
 }
-
