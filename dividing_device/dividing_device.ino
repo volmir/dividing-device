@@ -9,13 +9,13 @@ char lcdRow2[16];
 unsigned long uptime;               // Переменная хранит время работы в ms
 
 //---------- Параметры которые можно задать в меню ----------
-unsigned long gearTooth = 24;
+volatile unsigned long gearTooth = 24;
 
 int dividerTotal = 4;
 int dividerCurrent = 0;
 
-boolean runGear = false;
-boolean runDivider = false;
+volatile boolean runGear = false;
+volatile boolean runDivider = false;
 
 //----------  Названия кнопок ----------
 #define BUTTON_RESET   0
@@ -51,12 +51,12 @@ int menuCount = 2;                  // Количество пунктов ме�
 #define CW HIGH                     // Define direction of rotation
 #define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
 
-unsigned long motorSteps;           // Количество импульсов ШД на один оборот детали
+volatile unsigned long motorSteps;           // Количество импульсов ШД на один оборот детали
 
 //---------- Энкодер, синхронизация ----------
 #define interruptPin           21           // Контакт к которому подключен датчик энкодера
 #define encoderStepsPerTurn    500          // Разрешение энкодера (количество линий на полный оброт)
-unsigned long encoderCounter = 0;           // Счетчик шагов энкодера
+volatile unsigned long encoderCounter = 0;  // Счетчик шагов энкодера
 
 //---------- Подсчет количества оборотов шпинделя ----------
 #define turnsCalcInterval     200           // Интервал в миллисекундах за который подсчитываются обороты шпинделя   
@@ -65,12 +65,12 @@ unsigned long turnsCounterPrev = 0;
 unsigned long turnsTimeLast = 0;
 
 //---------- Нарезание шестеренок ----------
-#define multiplicator    10000                // Вводим для замены работы с float, double
-unsigned long gearCoefficient = 0;            // Итоговый коэффициент: на сколько линий должен провернуться энкодер для того, чтобы шаговый двигатель смог сделать один шаг
-unsigned long gearCoefficientFraction = 0;    // Итоговый коэффициент: дробная часть
-unsigned long encoderLinesMove = 0;           // Количество линий, на которые повернулся энкодер
+#define multiplicator    10000               // Вводим для замены работы с float, double
+volatile int gearCoefficient = 0;            // Итоговый коэффициент: на сколько линий должен провернуться энкодер для того, чтобы шаговый двигатель смог сделать один шаг
+volatile int gearCoefficientFraction = 0;    // Итоговый коэффициент: дробная часть
+volatile int encoderLinesMove = 0;           // Количество линий, на которые повернулся энкодер
 
-  
+
 
 //---------- Загрузка ----------
 void setup() {
@@ -85,8 +85,6 @@ void setup() {
   digitalWrite(motorEnablePin, LOW);
   digitalWrite(motorDirPin, CW);
 
-  motorSteps = stepsPerRevolution * microsteps * gearRatio;
-
   pinMode(interruptPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(interruptPin), encoderTick, RISING);
 }
@@ -95,7 +93,9 @@ void setup() {
 void loop() {
   uptime = millis(); // Сохраняем время работы каждый цикл
 
-  calcTurnsPerMinute();
+  if (runGear) {
+    calcTurnsPerMinute();
+  }
 
   if (buttonPress == 0) { // Если кнопки не были нажаты ранее
     int buttonPinValue = analogRead(0); // Проверяем значение, не нажата ли кнопка
@@ -198,10 +198,12 @@ void setDividerTotal(int concat) {
   }
 }
 
-void toggleGearOption() { 
+void toggleGearOption() {
   runGear = !runGear;
   if (runGear) {
     digitalWrite(motorEnablePin, HIGH);
+
+    motorSteps = stepsPerRevolution * microsteps * gearRatio;
     gearCoefficient = gearTooth * multiplicator * encoderStepsPerTurn / motorSteps;
   } else {
     digitalWrite(motorEnablePin, LOW);
@@ -212,6 +214,8 @@ void runDividerOption() {
   unsigned long i;
   unsigned long stepsPerDiv;
 
+  motorSteps = stepsPerRevolution * microsteps * gearRatio;
+
   if (dividerCurrent < dividerTotal) {
     dividerCurrent++;
     runDivider = true;
@@ -219,7 +223,6 @@ void runDividerOption() {
 
     stepsPerDiv = round(motorSteps / dividerTotal);
     for (i = 0; i < stepsPerDiv; i++) {
-      Serial.println(String(i));
       moveMotor();
     }
   } else {
@@ -247,10 +250,16 @@ void encoderTick() {
   encoderCounter++;
   encoderLinesMove++;
 
+  Serial.println("encoderCounter: " + String(encoderCounter));
+  Serial.println("encoderLinesMove: " + String(encoderLinesMove)); 
+  Serial.println("gearCoefficient: " + String(gearCoefficient));
+  Serial.println("gearCoefficientFraction: " + String(gearCoefficientFraction)); 
+  Serial.println("-----------------------------------"); 
+
   if (runGear) {
     if ((encoderLinesMove * multiplicator) >= (gearCoefficient + gearCoefficientFraction)) {
       moveMotor();
-      
+
       encoderLinesMove = 0;
       gearCoefficientFraction = (encoderLinesMove * multiplicator) - (gearCoefficient + gearCoefficientFraction);
     }
