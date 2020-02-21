@@ -1,24 +1,29 @@
 
 #include <LiquidCrystal.h>
-#include <AccelStepper.h>
-
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
-//---------- Временные переменные для sprintf ----------
-// https://arduinobasics.blogspot.com/2019/05/sprintf-function.html
+//---------- Переменные для вывода текста на экран ----------
 char lcdRow1[16];
 char lcdRow2[16];
 
 unsigned long uptime;               // Переменная хранит время работы в ms
 
 //---------- Параметры которые можно задать в меню ----------
-int gearTooth = 24;
+unsigned long gearTooth = 24;
 
 int dividerTotal = 4;
 int dividerCurrent = 0;
 
 boolean runGear = false;
 boolean runDivider = false;
+
+//----------  Названия кнопок ----------
+#define BUTTON_RESET   0
+#define BUTTON_SELECT  1
+#define BUTTON_PREV    2
+#define BUTTON_NEXT    3
+#define BUTTON_UP      4
+#define BUTTON_DOWN    5
 
 //----------  Нажатие кнопок ----------
 int const buttonInterval = 200;	    // Интервал срабатывания кнопки при удержании
@@ -42,32 +47,34 @@ int menuCount = 2;                  // Количество пунктов ме�
 #define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
 
 #define pulseWidth          1       // Length of time for one step pulse
-#define pulseDelay          0       // Zero here means fast, as in no delay
 
 #define CW HIGH                     // Define direction of rotation
 #define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
 
-unsigned long motorSteps;
-unsigned long stepsPerDiv;
-
-AccelStepper stepper(AccelStepper::DRIVER, motorStepPin, motorDirPin);
+unsigned long motorSteps;           // Количество импульсов ШД на один оборот детали
 
 //---------- Энкодер, синхронизация ----------
-#define interruptPin    21                  // Контакт к которому подключен датчик энкодера
+#define interruptPin           21           // Контакт к которому подключен датчик энкодера
+#define encoderStepsPerTurn    500          // Разрешение энкодера (количество линий на полный оброт)
 unsigned long encoderCounter = 0;           // Счетчик шагов энкодера
-unsigned long encoderCounterPrev = 0;       // Предыдущее число шагов энкодера
-unsigned int encoderStepsPerTurn = 500;     // Разрешение энкодера (количество линий на полный оброт)
 
 //---------- Подсчет количества оборотов шпинделя ----------
 #define turnsCalcInterval     200           // Интервал в миллисекундах за который подсчитываются обороты шпинделя   
+unsigned int turnsPerMinute = 0;            // Обороты шпинделя (в минуту)
 unsigned long turnsCounterPrev = 0;
-unsigned long turnsPerMinute = 0;
 unsigned long turnsTimeLast = 0;
 
+//---------- Нарезание шестеренок ----------
+#define multiplicator    10000                // Вводим для замены работы с float, double
+unsigned long gearCoefficient = 0;            // Итоговый коэффициент: на сколько линий должен провернуться энкодер для того, чтобы шаговый двигатель смог сделать один шаг
+unsigned long gearCoefficientFraction = 0;    // Итоговый коэффициент: дробная часть
+unsigned long encoderLinesMove = 0;           // Количество линий, на которые повернулся энкодер
 
+  
 
 //---------- Загрузка ----------
 void setup() {
+  Serial.begin(112500);
   lcd.begin(16, 2); // Инициализируем дисплей
   printMenuGear();
 
@@ -78,9 +85,6 @@ void setup() {
   digitalWrite(motorEnablePin, LOW);
   digitalWrite(motorDirPin, CW);
 
-  stepper.setMaxSpeed(3000);
-  stepper.setAcceleration(300);
-
   motorSteps = stepsPerRevolution * microsteps * gearRatio;
 
   pinMode(interruptPin, INPUT_PULLUP);
@@ -88,21 +92,18 @@ void setup() {
 }
 
 //---------- Главный цикл ----------
-void loop() {   
+void loop() {
   uptime = millis(); // Сохраняем время работы каждый цикл
 
-  if (runGear) {
-    runGearTracking();
-    calcTurnsPerMinute();
-  }
+  calcTurnsPerMinute();
 
   if (buttonPress == 0) { // Если кнопки не были нажаты ранее
     int buttonPinValue = analogRead(0); // Проверяем значение, не нажата ли кнопка
-    if (buttonPinValue < 60)		buttonPress = 4; // Нажата [+]
-    else if (buttonPinValue < 200)	buttonPress = 2; // Нажата [Prev]
-    else if (buttonPinValue < 400)	buttonPress = 3; // Нажата [Next]
-    else if (buttonPinValue < 600)	buttonPress = 5; // Нажата [-]
-    else if (buttonPinValue < 800)	buttonPress = 1; // Нажата [Menu]
+    if (buttonPinValue < 60)		buttonPress = BUTTON_UP; // Нажата [+]
+    else if (buttonPinValue < 200)	buttonPress = BUTTON_PREV; // Нажата [Prev]
+    else if (buttonPinValue < 400)	buttonPress = BUTTON_NEXT; // Нажата [Next]
+    else if (buttonPinValue < 600)	buttonPress = BUTTON_DOWN; // Нажата [-]
+    else if (buttonPinValue < 800)	buttonPress = BUTTON_SELECT; // Нажата [Menu]
   } else { // Кнопка была нажата ранее
     if (buttonPressTime == 0) { // Если не замеряли интервал нажатия кнопки
       buttonPressTime = uptime; // Засекаем когда была нажата кнопка
@@ -119,7 +120,7 @@ void loop() {
 //---------- Обработка нажатия кнопки ----------
 void ButtonClick(int buttonId) {
 
-  if (buttonId == 1) {
+  if (buttonId == BUTTON_SELECT) {
     // Клик [Select]
     if (menuCurrent == MENU_GEAR) {
       toggleGearOption();
@@ -129,15 +130,15 @@ void ButtonClick(int buttonId) {
     }
   }
 
-  if (buttonId == 2) {
-    menuCurrent--;		// Клик [Prev] Позицию ниже
+  if (buttonId == BUTTON_PREV) {
+    menuCurrent--;
   }
-  if (buttonId == 3) {
-    menuCurrent++;		// Клик [Next] Позиция выше
+  if (buttonId == BUTTON_NEXT) {
+    menuCurrent++;
   }
   menuCurrent = constrain(menuCurrent, 0, menuCount - 1);	// Ограничиваем меню
 
-  if (buttonId == 4) {
+  if (buttonId == BUTTON_UP) {
     // Клик [+] Увеличиваем значение выбранного параметра
     if (menuCurrent == MENU_GEAR) {
       setGearTooth(1);
@@ -146,7 +147,7 @@ void ButtonClick(int buttonId) {
       setDividerTotal(1);
     }
   }
-  if (buttonId == 5) {
+  if (buttonId == BUTTON_DOWN) {
     // Клик [-] Уменьшаем значение выбранного параметра
     if (menuCurrent == MENU_GEAR) {
       setGearTooth(-1);
@@ -163,7 +164,6 @@ void ButtonClick(int buttonId) {
   if (menuCurrent == MENU_DIVIDER) {
     printMenuDivider();
   }
-
 }
 
 void printMenuGear() {
@@ -198,19 +198,30 @@ void setDividerTotal(int concat) {
   }
 }
 
-void toggleGearOption() {
+void toggleGearOption() { 
   runGear = !runGear;
+  if (runGear) {
+    digitalWrite(motorEnablePin, HIGH);
+    gearCoefficient = gearTooth * multiplicator * encoderStepsPerTurn / motorSteps;
+  } else {
+    digitalWrite(motorEnablePin, LOW);
+  }
 }
 
 void runDividerOption() {
+  unsigned long i;
+  unsigned long stepsPerDiv;
+
   if (dividerCurrent < dividerTotal) {
     dividerCurrent++;
     runDivider = true;
     digitalWrite(motorEnablePin, HIGH);
 
-    stepsPerDiv = (motorSteps / dividerTotal);
-    moveMotor(stepsPerDiv, CW);
-    //moveMotorAccel(stepsPerDiv, CW);
+    stepsPerDiv = round(motorSteps / dividerTotal);
+    for (i = 0; i < stepsPerDiv; i++) {
+      Serial.println(String(i));
+      moveMotor();
+    }
   } else {
     dividerCurrent = 0;
     runDivider = false;
@@ -220,76 +231,41 @@ void runDividerOption() {
   menuCurrent = MENU_DIVIDER;
   printMenuDivider();
 
-  /* --------- Divider menu bug -------- */
+  /* --------- Print Divider menu -------- */
   sprintf(lcdRow1, "Divider: %s", (runDivider == true) ? "[ON] " : "[OFF]");
   lcd.setCursor(0, 0);
   lcd.print(lcdRow1);
 }
 
-void moveMotor(unsigned long steps, int dir) {
-  unsigned long i;
-
-  for (i = 0; i < steps; i++) {
-    digitalWrite(motorDirPin, dir);
-    digitalWrite(motorStepPin, HIGH);
-    delay(pulseWidth);
-    digitalWrite(motorStepPin, LOW);
-    delay(pulseDelay);
-  }
-
-  return;
-}
-
-void moveMotorAccel(unsigned long steps, int dir) {
-  int orientation;
-
-  if (dir == CW) {
-    orientation = 1;
-  } else {
-    orientation = -1;
-  }
-
-  if (stepper.distanceToGo() == 0) { //проверка, отработал ли двигатель предыдущее движение
-    stepper.move(steps * orientation); //устанавливает следующее перемещение на X шагов (если "orientation" равно -1 будет перемещаться -X (в противоположном направлении))
-  }
-  stepper.runToPosition();
-
-  return;
+void moveMotor() {
+  digitalWrite(motorStepPin, HIGH);
+  delay(pulseWidth);
+  digitalWrite(motorStepPin, LOW);
 }
 
 void encoderTick() {
   encoderCounter++;
+  encoderLinesMove++;
+
+  if (runGear) {
+    if ((encoderLinesMove * multiplicator) >= (gearCoefficient + gearCoefficientFraction)) {
+      moveMotor();
+      
+      encoderLinesMove = 0;
+      gearCoefficientFraction = (encoderLinesMove * multiplicator) - (gearCoefficient + gearCoefficientFraction);
+    }
+  }
 }
 
 void calcTurnsPerMinute() {
   // если прошло turnsCalcInterval мс или более, то начинаем расчёт
   if ((millis() - turnsTimeLast) >= turnsCalcInterval) {
     turnsPerMinute = 60 * (1000 / turnsCalcInterval) * (encoderCounter - turnsCounterPrev) / encoderStepsPerTurn;
- 
+
     turnsCounterPrev = encoderCounter; // запоминаем количество шагов
     turnsTimeLast = millis(); // запоминаем время расчёта
 
     menuCurrent = MENU_GEAR;
     printMenuGear();
-  }
-}
-
-void runGearTracking() {  
-  unsigned long spindleTurns = 0;  
-  unsigned long encoderCounterCurr = 0;
-
-  encoderCounterCurr = encoderCounter;  
-  spindleTurns = encoderCounterCurr - encoderCounterPrev;
-  
-  if (spindleTurns > 0) {
-    unsigned long steps = 0;    
-    steps = round(motorSteps * spindleTurns / encoderStepsPerTurn / gearTooth);
-
-    if (steps > 0) {      
-      moveMotor(steps, CW); // проворачиваем шестерню на необходимое число шагов
-      //moveMotorAccel(steps, CW);
-
-      encoderCounterPrev = encoderCounterCurr; // запоминаем количество шагов
-    }
   }
 }
