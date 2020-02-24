@@ -1,4 +1,3 @@
-
 #include <LiquidCrystal.h>
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
@@ -9,13 +8,15 @@ char lcdRow2[16];
 unsigned long uptime;               // Переменная хранит время работы в ms
 
 //---------- Параметры которые можно задать в меню ----------
-volatile unsigned long gearTooth = 24;
+unsigned long gearTooth = 24;
 
 int dividerTotal = 4;
 int dividerCurrent = 0;
 
-volatile boolean runGear = false;
-volatile boolean runDivider = false;
+boolean runGear = false;
+boolean runDivider = false;
+
+int rotateDirection = 1;            // Направление вращения заготовки
 
 //----------  Названия кнопок ----------
 #define BUTTON_RESET   0
@@ -26,16 +27,18 @@ volatile boolean runDivider = false;
 #define BUTTON_DOWN    5
 
 //----------  Нажатие кнопок ----------
+#define buttonAnalogPin   0         // Пин с которого считываются нажатия кнопок
 int const buttonInterval = 200;	    // Интервал срабатывания кнопки при удержании
 int	buttonPress = 0;			          // Код нажатой кнопки, или 0 если не нажата
 unsigned long	buttonPressTime = 0;  // Время на устройстве в которое была нажата кнопка
 
 //----------  Меню ----------
 int	menuCurrent = 0;                // Выбранный пункт меню
-int menuCount = 2;                  // Количество пунктов меню
+int menuCount = 3;                  // Количество пунктов меню
 
 #define MENU_GEAR       0           // Пункт меню "Нарезание зубьев"
 #define MENU_DIVIDER    1           // Пункт меню "Деление окружности на части" 
+#define MENU_ROTATE     2           // Пункт меню "Вращение заготвки по/против часовой стрелки" 
 
 //---------- Настройки шагового двигателя ----------
 #define motorStepPin   22           // Output signal to step the motor
@@ -51,7 +54,7 @@ int menuCount = 2;                  // Количество пунктов ме�
 #define CW HIGH                     // Define direction of rotation
 #define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
 
-volatile unsigned long motorSteps;           // Количество импульсов ШД на один оборот детали
+unsigned int motorSteps;            // Количество импульсов ШД на один оборот детали
 
 //---------- Энкодер, синхронизация ----------
 #define interruptPin           21           // Контакт к которому подключен датчик энкодера
@@ -65,16 +68,14 @@ unsigned long turnsCounterPrev = 0;
 unsigned long turnsTimeLast = 0;
 
 //---------- Нарезание шестеренок ----------
-#define multiplicator    10000               // Вводим для замены работы с float, double
-volatile int gearCoefficient = 0;            // Итоговый коэффициент: на сколько линий должен провернуться энкодер для того, чтобы шаговый двигатель смог сделать один шаг
-volatile int gearCoefficientFraction = 0;    // Итоговый коэффициент: дробная часть
-volatile int encoderLinesMove = 0;           // Количество линий, на которые повернулся энкодер
-
+#define multiplicator    1000                          // Вводим для замены работы с float, double 
+volatile unsigned long gearCoefficient = 0;            // Итоговый коэффициент: на сколько линий должен провернуться энкодер для того, чтобы шаговый двигатель смог сделать один шаг
+volatile unsigned long gearCoefficientFraction = 0;    // Итоговый коэффициент: дробная часть
+volatile unsigned long encoderLinesMove = 0;           // Количество линий, на которые повернулся энкодер
 
 
 //---------- Загрузка ----------
 void setup() {
-  Serial.begin(112500);
   lcd.begin(16, 2); // Инициализируем дисплей
   printMenuGear();
 
@@ -87,6 +88,9 @@ void setup() {
 
   pinMode(interruptPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(interruptPin), encoderTick, RISING);
+
+  motorSteps = stepsPerRevolution * microsteps * gearRatio;
+  rotateDirection = CW;
 }
 
 //---------- Главный цикл ----------
@@ -98,7 +102,7 @@ void loop() {
   }
 
   if (buttonPress == 0) { // Если кнопки не были нажаты ранее
-    int buttonPinValue = analogRead(0); // Проверяем значение, не нажата ли кнопка
+    int buttonPinValue = analogRead(buttonAnalogPin); // Проверяем значение, не нажата ли кнопка
     if (buttonPinValue < 60)		buttonPress = BUTTON_UP; // Нажата [+]
     else if (buttonPinValue < 200)	buttonPress = BUTTON_PREV; // Нажата [Prev]
     else if (buttonPinValue < 400)	buttonPress = BUTTON_NEXT; // Нажата [Next]
@@ -128,6 +132,9 @@ void ButtonClick(int buttonId) {
     if (menuCurrent == MENU_DIVIDER) {
       runDividerOption();
     }
+    if (menuCurrent == MENU_ROTATE) {
+      runRotateOption();
+    }
   }
 
   if (buttonId == BUTTON_PREV) {
@@ -146,6 +153,9 @@ void ButtonClick(int buttonId) {
     if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(1);
     }
+    if (menuCurrent == MENU_ROTATE) {
+      changeRotateDirection();
+    }    
   }
   if (buttonId == BUTTON_DOWN) {
     // Клик [-] Уменьшаем значение выбранного параметра
@@ -154,6 +164,9 @@ void ButtonClick(int buttonId) {
     }
     if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(-1);
+    }
+    if (menuCurrent == MENU_ROTATE) {
+      changeRotateDirection();
     }
   }
 
@@ -164,6 +177,9 @@ void ButtonClick(int buttonId) {
   if (menuCurrent == MENU_DIVIDER) {
     printMenuDivider();
   }
+  if (menuCurrent == MENU_ROTATE) {
+    printMenuRotate();
+  }  
 }
 
 void printMenuGear() {
@@ -173,8 +189,14 @@ void printMenuGear() {
 }
 
 void printMenuDivider() {
-  sprintf(lcdRow1, "Divider: %s", (runDivider == true) ? "[ON] " : "[OFF]");
   sprintf(lcdRow2, "Parts: %3d | %3d", dividerTotal, dividerCurrent);
+  sprintf(lcdRow1, "Divider: %s", (runDivider == true) ? "[ON] " : "[OFF]");
+  printLcd();
+}
+
+void printMenuRotate() {
+  sprintf(lcdRow1, "Rotation");
+  sprintf(lcdRow2, "Direction: %s", (rotateDirection == CW) ? "CW " : "CCW");
   printLcd();
 }
 
@@ -198,13 +220,25 @@ void setDividerTotal(int concat) {
   }
 }
 
+void changeRotateDirection() {
+  if (rotateDirection == CW) {
+    rotateDirection = CCW;
+    digitalWrite(motorDirPin, CCW);
+  } else {
+    rotateDirection = CW;
+    digitalWrite(motorDirPin, CW);
+  }
+}
+
 void toggleGearOption() {
   runGear = !runGear;
   if (runGear) {
     digitalWrite(motorEnablePin, HIGH);
 
-    motorSteps = stepsPerRevolution * microsteps * gearRatio;
     gearCoefficient = gearTooth * multiplicator * encoderStepsPerTurn / motorSteps;
+    
+    encoderLinesMove = 0;
+    gearCoefficientFraction = 0;
   } else {
     digitalWrite(motorEnablePin, LOW);
   }
@@ -213,8 +247,6 @@ void toggleGearOption() {
 void runDividerOption() {
   unsigned long i;
   unsigned long stepsPerDiv;
-
-  motorSteps = stepsPerRevolution * microsteps * gearRatio;
 
   if (dividerCurrent < dividerTotal) {
     dividerCurrent++;
@@ -233,11 +265,20 @@ void runDividerOption() {
 
   menuCurrent = MENU_DIVIDER;
   printMenuDivider();
+}
 
-  /* --------- Print Divider menu -------- */
-  sprintf(lcdRow1, "Divider: %s", (runDivider == true) ? "[ON] " : "[OFF]");
-  lcd.setCursor(0, 0);
-  lcd.print(lcdRow1);
+void runRotateOption() {
+  int breakFlag = 0;
+  int buttonPinValue;
+
+  while (breakFlag == 0) {  
+    moveMotor();
+
+    buttonPinValue = analogRead(buttonAnalogPin);
+    if (buttonPinValue > 800) {
+      breakFlag = 1;
+    }
+  }
 }
 
 void moveMotor() {
@@ -247,22 +288,22 @@ void moveMotor() {
 }
 
 void encoderTick() {
-  encoderCounter++;
-  encoderLinesMove++;
-
-  Serial.println("encoderCounter: " + String(encoderCounter));
-  Serial.println("encoderLinesMove: " + String(encoderLinesMove)); 
-  Serial.println("gearCoefficient: " + String(gearCoefficient));
-  Serial.println("gearCoefficientFraction: " + String(gearCoefficientFraction)); 
-  Serial.println("-----------------------------------"); 
+  encoderCounter++;  
 
   if (runGear) {
-    if ((encoderLinesMove * multiplicator) >= (gearCoefficient + gearCoefficientFraction)) {
-      moveMotor();
+    encoderLinesMove++;
 
+    if ((encoderLinesMove * multiplicator) >= gearCoefficient) {
+      moveMotor();
+     
+      gearCoefficientFraction += ((encoderLinesMove * multiplicator) - gearCoefficient);     
       encoderLinesMove = 0;
-      gearCoefficientFraction = (encoderLinesMove * multiplicator) - (gearCoefficient + gearCoefficientFraction);
-    }
+    }   
+
+    if (gearCoefficientFraction >= multiplicator) {
+      encoderLinesMove++;
+      gearCoefficientFraction = gearCoefficientFraction - multiplicator;
+    }  
   }
 }
 
