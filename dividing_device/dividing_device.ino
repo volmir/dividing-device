@@ -38,7 +38,7 @@ int menuCount = 3;                  // Количество пунктов ме�
 
 #define MENU_GEAR       0           // Пункт меню "Нарезание зубьев"
 #define MENU_DIVIDER    1           // Пункт меню "Деление окружности на части" 
-#define MENU_ROTATE     2           // Пункт меню "Вращение заготвки по/против часовой стрелки" 
+#define MENU_SETTINGS     2           // Пункт меню "Вращение заготвки по/против часовой стрелки" 
 
 //---------- Настройки шагового двигателя ----------
 #define motorStepPin   22           // Output signal to step the motor
@@ -132,7 +132,7 @@ void ButtonClick(int buttonId) {
     if (menuCurrent == MENU_DIVIDER) {
       runDividerOption();
     }
-    if (menuCurrent == MENU_ROTATE) {
+    if (menuCurrent == MENU_SETTINGS) {
       runRotateOption();
     }
   }
@@ -153,7 +153,7 @@ void ButtonClick(int buttonId) {
     if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(1);
     }
-    if (menuCurrent == MENU_ROTATE) {
+    if (menuCurrent == MENU_SETTINGS) {
       changeRotateDirection();
     }    
   }
@@ -165,7 +165,7 @@ void ButtonClick(int buttonId) {
     if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(-1);
     }
-    if (menuCurrent == MENU_ROTATE) {
+    if (menuCurrent == MENU_SETTINGS) {
       changeRotateDirection();
     }
   }
@@ -177,7 +177,7 @@ void ButtonClick(int buttonId) {
   if (menuCurrent == MENU_DIVIDER) {
     printMenuDivider();
   }
-  if (menuCurrent == MENU_ROTATE) {
+  if (menuCurrent == MENU_SETTINGS) {
     printMenuRotate();
   }  
 }
@@ -195,7 +195,7 @@ void printMenuDivider() {
 }
 
 void printMenuRotate() {
-  sprintf(lcdRow1, "Rotation");
+  sprintf(lcdRow1, "Settings");
   sprintf(lcdRow2, "Direction: %s", (rotateDirection == CW) ? "CW " : "CCW");
   printLcd();
 }

@@ -1,5 +1,5 @@
 /*
-Step Indexer v. 2.2
+Step Indexer v. 2.3
  
 This program controls the position of a stepper output shaft via
 manual input and displays the result.  It also provides temperature
@@ -11,13 +11,13 @@ and the Sainsmart LCD/keypad sheild with two TMP36 temp sensors
 2.0 Created  March 2013 by Gary Liming 
 2.1 Frozen   October 2013 by Gary Liming
 2.2 Frozen   February 2014 by Gary Liming
+2.3 Frozen   September 2014 by Gary Liming
 */
 
 //First, include some files for the LCD display, and its motor
 
 #include <Arduino.h>
 #include <LiquidCrystal.h>
-
 
 //  Next define your parameters about your motor and gearing
 
@@ -28,10 +28,14 @@ and the Sainsmart LCD/keypad sheild with two TMP36 temp sensors
                                 //   microstepping.  Set this number to the number of microsteps
                                 //   that is set on the driver board.  For large ratios, you may want to 
                                 //   use no microstepping and set this to 1.
-#define GearRatio1  3           // Change these three values to reflect any front end gearing you 
-#define GearRatio2  40          //   are using for three different devices.  If no gearing, then
-#define GearRatio3  90          //   define this value to be 1.  GearRatio1 is the default
-#define GearRatioMax 3          //   number of gear ratios defined
+#define GearRatio1top  3        // Change these three values to reflect any front end gearing you 
+#define GearRatio1bottom 1      //   this is the bottom of the ratio - usually 1, as in 3 to 1, but you may change that here.
+#define GearRatio2top  40       //   are using for three different devices.  If no gearing, then
+#define GearRatio2bottom 1      //   40 to 1
+#define GearRatio3top  90       //   define this value to be 1.  GearRatio1 is the default
+#define GearRatio3bottom 1      //   90 to 1
+
+#define GearRatioMax 3          // number of above gear ratios defined
 
 #define AngleIncrement 5        // Set how much a keypress changes the angle setting
 
@@ -52,6 +56,9 @@ and the Sainsmart LCD/keypad sheild with two TMP36 temp sensors
 
 #define moveangle 10
 #define movesteps 11
+
+//#define Celsius 1         // define only one of these, please!
+#define Fahrenheit 1        // Fahrenheit is default
 
 // Define the pins that the driver is attached to.
 // Once set, this are normally not changed since they correspond to the wiring.
@@ -97,30 +104,40 @@ int    cur_pos = 0;
 int    cur_dir = CW;
 int    motorspeeddelay = DefaultMotorSpeed;
 unsigned long motorSteps;
-int    gear_ratio_array[GearRatioMax] = {GearRatio1,GearRatio2,GearRatio3};
-int    gearratioindex = 0;      // the first array element starts with 0
+unsigned long gear_ratio_top_array[GearRatioMax] = {GearRatio1top,GearRatio2top,GearRatio3top};
+unsigned long gear_ratio_bottom_array[GearRatioMax] = {GearRatio1bottom,GearRatio2bottom,GearRatio3bottom};
+int    gearratioindex = 0;      // the first array element starts with 0 and is the default ration chosen
 
 void setup()
 {
 //  Create some custom characters for the lcd display
   byte c_CW[8] =       {0b01101,0b10011,0b10111,0b10000,0b10000,0b10000,0b10001,0b01110}; //Clockwise
   byte c_CCW[8] =      {0b10110,0b11001,0b11101,0b00001,0b00001,0b00001,0b10001,0b01110}; // CounterClockWise
+#ifdef Fahrenheit
   byte c_DegreeF[8] =  {0b01000,0b10100,0b01000,0b00111,0b00100,0b00110,0b00100,0b00100}; //  degreeF
+#endif
+#ifdef Celsius
+  byte c_DegreeF[8]  = {0b01000,0b10100,0b01011,0b00101,0b00100,0b00100,0b00101,0b00011}; //  degreeC
+#endif
   lcd.createChar(1,c_CW);
   lcd.createChar(2,c_CCW);
   lcd.createChar(3,c_DegreeF);
+
   
   // begin program
   
-  motorSteps = gear_ratio_array[gearratioindex]*Microsteps*StepsPerRevolution;
+  motorSteps = (gear_ratio_top_array[gearratioindex]*Microsteps*StepsPerRevolution)/gear_ratio_bottom_array[gearratioindex];
   lcd.begin(16, 2);
   lcd.clear();
   lcd.setCursor(0,0);                 // display flash screen
-  lcd.print("Step Indexer 2.2");
+  lcd.print("Step Indexer 2.3");
   lcd.setCursor(0,1);
   lcd.print("Ratio =");
   lcd.setCursor(8,1);
-  lcd.print(gear_ratio_array[gearratioindex]);
+  lcd.print(gear_ratio_top_array[gearratioindex]);
+  lcd.setCursor(12,1);
+  lcd.print(":");
+  lcd.print(gear_ratio_bottom_array[gearratioindex]);
   delay(1500);                        // wait a few secs
   lcd.clear();
   
@@ -371,13 +388,13 @@ void doratiomode(int tmp_key)
           ++gearratioindex;
           if (gearratioindex > GearRatioMax-1)  //wrap around if over the max
             gearratioindex = 0;
-          motorSteps = gear_ratio_array[gearratioindex]*Microsteps*StepsPerRevolution;
+          motorSteps = (gear_ratio_top_array[gearratioindex]*Microsteps*StepsPerRevolution)/gear_ratio_bottom_array[gearratioindex];
           break;
       case DOWN_KEY:                        // reduce the number of steps
           --gearratioindex;
           if (gearratioindex < 0)
             gearratioindex = GearRatioMax-1;    // wrap around if already at the bottom  
-          motorSteps = gear_ratio_array[gearratioindex]*Microsteps*StepsPerRevolution;
+          motorSteps = (gear_ratio_top_array[gearratioindex]*Microsteps*StepsPerRevolution)/gear_ratio_bottom_array[gearratioindex];
           break;
       case LEFT_KEY:                        //  Left and Right keys do nothing in this mode 
           break;
@@ -515,8 +532,12 @@ void displayscreen(int menunum)        // screen displays are here
   case ratiomode:
     lcd.setCursor(0,0);
     lcd.print("Ratio =");
-    lcd.setCursor(8,0);
-    lcd.print(gear_ratio_array[gearratioindex]);
+    lcd.setCursor(4,1);
+    lcd.print(gear_ratio_top_array[gearratioindex]);
+    lcd.setCursor(10,1);
+    lcd.print(":");
+    lcd.setCursor(11,1);
+    lcd.print(gear_ratio_bottom_array[gearratioindex]);
     break;  
   }
   return;
@@ -553,16 +574,22 @@ void move_motor(unsigned long steps, int dir, int type)
 
 int gettemp(int device)
 {
-  int tfahrenheit=0;
+  float temperature=0.0, tfahrenheit=0.0;
   int i;
+  
   analogRead(device);                      // first time to let adc settle down
   delay(50);                               // throw first reading away
   for (i=0;i<TSampleSize;++i)              // take several readings
   {
-    tfahrenheit += ((analogRead(device)* 4.88758)/10);
+
+  tfahrenheit = ((float)(analogRead(device)* 4.88758)/10.0);    
+#ifdef Celsius
+  tfahrenheit = ((tfahrenheit-32.0)/1.8) ;  // just use different formula for celsius
+#endif
+    temperature += tfahrenheit;
     delay(ADSettleTime);
   }  
-  return (int)(tfahrenheit/TSampleSize);   // return the average
+  return (int)(temperature/TSampleSize);   // return the average
 } 
 
 int get_real_key(void)    // routine to return a valid keystroke
@@ -585,10 +612,9 @@ int read_LCD_button()     // routine to read the LCD's buttons
   // average values for my board were: 0, 144, 324, 505, 742
   // add approx 100 to those values to set range
   if (key_in > 850) return NO_KEY;    
-  if (key_in < 70)   return RIGHT_KEY;  
-  if (key_in < 250)  return UP_KEY; 
-  if (key_in < 450)  return DOWN_KEY; 
-  if (key_in < 650)  return LEFT_KEY; 
-  if (key_in < 850)  return SELECT_KEY;  
+  if (key_in < 60)   return RIGHT_KEY;  
+  if (key_in < 200)  return UP_KEY; 
+  if (key_in < 400)  return DOWN_KEY; 
+  if (key_in < 600)  return LEFT_KEY; 
+  if (key_in < 800)  return SELECT_KEY;  
 } 
-
