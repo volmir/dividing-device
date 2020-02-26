@@ -129,11 +129,9 @@ void ButtonClick(int buttonId) {
   if (buttonId == BUTTON_SELECT) {
     if (menuCurrent == MENU_GEAR) {
       toggleGearOption();
-    }
-    if (menuCurrent == MENU_DIVIDER) {
+    } else if (menuCurrent == MENU_DIVIDER) {
       runDividerOption();
-    }
-    if (menuCurrent == MENU_SETTINGS) {
+    } else if (menuCurrent == MENU_SETTINGS) {
       runRotateOption();
     }
   }
@@ -150,11 +148,9 @@ void ButtonClick(int buttonId) {
   if (buttonId == BUTTON_UP) {
     if (menuCurrent == MENU_GEAR) {
       setGearTooth(1);
-    }
-    if (menuCurrent == MENU_DIVIDER) {
+    } else if  (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(1);
-    }
-    if (menuCurrent == MENU_SETTINGS) {
+    } else if (menuCurrent == MENU_SETTINGS) {
       changeRotateDirection();
     }    
   }
@@ -163,11 +159,9 @@ void ButtonClick(int buttonId) {
   if (buttonId == BUTTON_DOWN) {
     if (menuCurrent == MENU_GEAR) {
       setGearTooth(-1);
-    }
-    if (menuCurrent == MENU_DIVIDER) {
+    } else if (menuCurrent == MENU_DIVIDER) {
       setDividerTotal(-1);
-    }
-    if (menuCurrent == MENU_SETTINGS) {
+    } else if (menuCurrent == MENU_SETTINGS) {
       changeRotateDirection();
     }
   }
@@ -175,11 +169,9 @@ void ButtonClick(int buttonId) {
   // Отрисовка пунков меню
   if (menuCurrent == MENU_GEAR) {
     printMenuGear();
-  }
-  if (menuCurrent == MENU_DIVIDER) {
+  } else if (menuCurrent == MENU_DIVIDER) {
     printMenuDivider();
-  }
-  if (menuCurrent == MENU_SETTINGS) {
+  } else if (menuCurrent == MENU_SETTINGS) {
     printMenuRotate();
   }  
 }
