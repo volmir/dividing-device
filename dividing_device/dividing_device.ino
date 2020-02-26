@@ -5,7 +5,7 @@ LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 char lcdRow1[16];
 char lcdRow2[16];
 
-unsigned long uptime;               // Переменная хранит время работы в ms
+unsigned long uptime;               // Переменная хранит время работы в миллисекундах
 
 //---------- Параметры которые можно задать в меню ----------
 unsigned long gearTooth = 24;
@@ -38,7 +38,7 @@ int menuCount = 3;                  // Количество пунктов ме�
 
 #define MENU_GEAR       0           // Пункт меню "Нарезание зубьев"
 #define MENU_DIVIDER    1           // Пункт меню "Деление окружности на части" 
-#define MENU_SETTINGS     2           // Пункт меню "Вращение заготвки по/против часовой стрелки" 
+#define MENU_SETTINGS   2           // Пункт меню "Выбор направления вращения заготовки (CW/CCW). Непрерывное вращение" 
 
 //---------- Настройки шагового двигателя ----------
 #define motorStepPin   22           // Output signal to step the motor
@@ -49,7 +49,8 @@ int menuCount = 3;                  // Количество пунктов ме�
 #define microsteps 4                // Depending on your stepper driver, it may support microstepping
 #define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
 
-#define pulseWidth          1       // Length of time for one step pulse
+int pulseWidth = 100;               // Length of time for one step pulse (microseconds)
+                                    // There are 1,000 microseconds in a millisecond and 1,000,000 microseconds in a second
 
 #define CW HIGH                     // Define direction of rotation
 #define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
@@ -124,8 +125,8 @@ void loop() {
 //---------- Обработка нажатия кнопки ----------
 void ButtonClick(int buttonId) {
 
+  // Клик [Select]
   if (buttonId == BUTTON_SELECT) {
-    // Клик [Select]
     if (menuCurrent == MENU_GEAR) {
       toggleGearOption();
     }
@@ -145,8 +146,8 @@ void ButtonClick(int buttonId) {
   }
   menuCurrent = constrain(menuCurrent, 0, menuCount - 1);	// Ограничиваем меню
 
+  // Клик [+] Увеличиваем значение выбранного параметра
   if (buttonId == BUTTON_UP) {
-    // Клик [+] Увеличиваем значение выбранного параметра
     if (menuCurrent == MENU_GEAR) {
       setGearTooth(1);
     }
@@ -157,8 +158,9 @@ void ButtonClick(int buttonId) {
       changeRotateDirection();
     }    
   }
+  
+  // Клик [-] Уменьшаем значение выбранного параметра
   if (buttonId == BUTTON_DOWN) {
-    // Клик [-] Уменьшаем значение выбранного параметра
     if (menuCurrent == MENU_GEAR) {
       setGearTooth(-1);
     }
@@ -245,6 +247,7 @@ void toggleGearOption() {
 }
 
 void runDividerOption() {
+  static boolean roundFlag = true;  
   unsigned long i;
   unsigned long stepsPerDiv;
 
@@ -253,7 +256,17 @@ void runDividerOption() {
     runDivider = true;
     digitalWrite(motorEnablePin, HIGH);
 
-    stepsPerDiv = round(motorSteps / dividerTotal);
+    /** 
+     * Округляем последовательно в большую и меньшую сторону 
+     * Это позволит избежать накопления погрешности деления окружности
+     */
+    roundFlag = !roundFlag;
+    if (roundFlag) {
+      stepsPerDiv = floor(motorSteps / dividerTotal);
+    } else {
+      stepsPerDiv = ceil(motorSteps / dividerTotal);
+    }
+    
     for (i = 0; i < stepsPerDiv; i++) {
       moveMotor();
     }
@@ -270,6 +283,7 @@ void runDividerOption() {
 void runRotateOption() {
   int breakFlag = 0;
   int buttonPinValue;
+  digitalWrite(motorEnablePin, HIGH);
 
   while (breakFlag == 0) {  
     moveMotor();
@@ -277,14 +291,16 @@ void runRotateOption() {
     buttonPinValue = analogRead(buttonAnalogPin);
     if (buttonPinValue > 800) {
       breakFlag = 1;
+      digitalWrite(motorEnablePin, LOW);
     }
   }
 }
 
 void moveMotor() {
   digitalWrite(motorStepPin, HIGH);
-  delay(pulseWidth);
+  delayMicroseconds(pulseWidth);
   digitalWrite(motorStepPin, LOW);
+  delayMicroseconds(pulseWidth);
 }
 
 void encoderTick() {
