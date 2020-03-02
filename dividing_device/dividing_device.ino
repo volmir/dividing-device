@@ -241,7 +241,6 @@ void toggleGearOption() {
 void runDividerOption() {
   unsigned long moduleOfDivision;
   unsigned long partOfDividerTotal;
-  static boolean roundFlag = true;
   static int j = 0;
   unsigned long i;
   unsigned long stepsPerDiv;
@@ -256,34 +255,17 @@ void runDividerOption() {
        Это позволит избежать накопления погрешности деления окружности
     */
     moduleOfDivision = (motorSteps * 100 / dividerTotal) - ((motorSteps / dividerTotal) * 100);
+    j++;
 
-    if (dividerTotal < 10) {
-      if (moduleOfDivision <= 25) {
-        stepsPerDiv = (motorSteps / dividerTotal);
-      } else if (moduleOfDivision <= 75) {
-        roundFlag = !roundFlag;
-        if (roundFlag) {
-          stepsPerDiv = (motorSteps / dividerTotal);
-        } else {
-          stepsPerDiv = (motorSteps / dividerTotal) + 1;
-        }
-      } else {
-        stepsPerDiv = (motorSteps / dividerTotal) + 1;
-      }
-      
+    partOfDividerTotal = (dividerTotal * moduleOfDivision) / 100;
+    if (partOfDividerTotal >= j) {
+      stepsPerDiv = (motorSteps / dividerTotal) + 1;
     } else {
-      j++;
+      stepsPerDiv = (motorSteps / dividerTotal);
+    }
 
-      partOfDividerTotal = (dividerTotal * moduleOfDivision) / 100;
-      if (partOfDividerTotal >= j) {
-        stepsPerDiv = (motorSteps / dividerTotal) + 1;
-      } else {
-        stepsPerDiv = (motorSteps / dividerTotal);
-      }
-
-      if (j == dividerTotal) {
-        j = 0;
-      }
+    if (j == dividerTotal) {
+      j = 0;
     }
 
     for (i = 0; i < stepsPerDiv; i++) {
@@ -292,7 +274,6 @@ void runDividerOption() {
   } else {
     dividerCurrent = 0;
     runDivider = false;
-    roundFlag = true;
     j = 0;
     digitalWrite(motorEnablePin, LOW);
   }
