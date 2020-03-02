@@ -49,13 +49,13 @@ int menuCount = 3;                  // Количество пунктов ме�
 #define microsteps 4                // Depending on your stepper driver, it may support microstepping
 #define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
 
+// There are 1,000 microseconds in a millisecond and 1,000,000 microseconds in a second
 int pulseWidth = 100;               // Length of time for one step pulse (microseconds)
-                                    // There are 1,000 microseconds in a millisecond and 1,000,000 microseconds in a second
 
 #define CW HIGH                     // Define direction of rotation
 #define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
 
-unsigned int motorSteps;            // Количество импульсов ШД на один оборот детали
+unsigned long motorSteps;           // Количество импульсов ШД на один оборот детали
 
 //---------- Энкодер, синхронизация ----------
 #define interruptPin           21           // Контакт к которому подключен датчик энкодера
@@ -152,9 +152,9 @@ void ButtonClick(int buttonId) {
       setDividerTotal(1);
     } else if (menuCurrent == MENU_SETTINGS) {
       changeRotateDirection();
-    }    
+    }
   }
-  
+
   // Клик [-] Уменьшаем значение выбранного параметра
   if (buttonId == BUTTON_DOWN) {
     if (menuCurrent == MENU_GEAR) {
@@ -173,7 +173,7 @@ void ButtonClick(int buttonId) {
     printMenuDivider();
   } else if (menuCurrent == MENU_SETTINGS) {
     printMenuRotate();
-  }  
+  }
 }
 
 void printMenuGear() {
@@ -230,7 +230,7 @@ void toggleGearOption() {
     digitalWrite(motorEnablePin, HIGH);
 
     gearCoefficient = gearTooth * multiplicator * encoderStepsPerTurn / motorSteps;
-    
+
     encoderLinesMove = 0;
     gearCoefficientFraction = 0;
   } else {
@@ -239,7 +239,10 @@ void toggleGearOption() {
 }
 
 void runDividerOption() {
-  static boolean roundFlag = true;  
+  unsigned long moduleOfDivision;
+  unsigned long partOfDividerTotal;
+  static boolean roundFlag = true;
+  static int j = 0;
   unsigned long i;
   unsigned long stepsPerDiv;
 
@@ -248,23 +251,49 @@ void runDividerOption() {
     runDivider = true;
     digitalWrite(motorEnablePin, HIGH);
 
-    /** 
-     * Округляем последовательно в большую и меньшую сторону 
-     * Это позволит избежать накопления погрешности деления окружности
-     */
-    roundFlag = !roundFlag;
-    if (roundFlag) {
-      stepsPerDiv = floor(motorSteps / dividerTotal);
+    /**
+       Округляем последовательно в большую и меньшую сторону
+       Это позволит избежать накопления погрешности деления окружности
+    */
+    moduleOfDivision = (motorSteps * 100 / dividerTotal) - ((motorSteps / dividerTotal) * 100);
+
+    if (dividerTotal < 10) {
+      if (moduleOfDivision <= 25) {
+        stepsPerDiv = (motorSteps / dividerTotal);
+      } else if (moduleOfDivision <= 75) {
+        roundFlag = !roundFlag;
+        if (roundFlag) {
+          stepsPerDiv = (motorSteps / dividerTotal);
+        } else {
+          stepsPerDiv = (motorSteps / dividerTotal) + 1;
+        }
+      } else {
+        stepsPerDiv = (motorSteps / dividerTotal) + 1;
+      }
+      
     } else {
-      stepsPerDiv = ceil(motorSteps / dividerTotal);
+      j++;
+
+      partOfDividerTotal = (dividerTotal * moduleOfDivision) / 100;
+      if (partOfDividerTotal >= j) {
+        stepsPerDiv = (motorSteps / dividerTotal) + 1;
+      } else {
+        stepsPerDiv = (motorSteps / dividerTotal);
+      }
+
+      if (j == dividerTotal) {
+        j = 0;
+      }
     }
-    
+
     for (i = 0; i < stepsPerDiv; i++) {
       moveMotor();
     }
   } else {
     dividerCurrent = 0;
     runDivider = false;
+    roundFlag = true;
+    j = 0;
     digitalWrite(motorEnablePin, LOW);
   }
 
@@ -277,7 +306,7 @@ void runRotateOption() {
   int buttonPinValue;
   digitalWrite(motorEnablePin, HIGH);
 
-  while (breakFlag == 0) {  
+  while (breakFlag == 0) {
     moveMotor();
 
     buttonPinValue = analogRead(buttonAnalogPin);
@@ -296,22 +325,22 @@ void moveMotor() {
 }
 
 void encoderTick() {
-  encoderCounter++;  
+  encoderCounter++;
 
   if (runGear) {
     encoderLinesMove++;
 
     if ((encoderLinesMove * multiplicator) >= gearCoefficient) {
       moveMotor();
-     
-      gearCoefficientFraction += ((encoderLinesMove * multiplicator) - gearCoefficient);     
+
+      gearCoefficientFraction += ((encoderLinesMove * multiplicator) - gearCoefficient);
       encoderLinesMove = 0;
-    }   
+    }
 
     if (gearCoefficientFraction >= multiplicator) {
       encoderLinesMove++;
       gearCoefficientFraction = gearCoefficientFraction - multiplicator;
-    }  
+    }
   }
 }
 
