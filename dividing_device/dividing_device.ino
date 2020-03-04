@@ -41,19 +41,19 @@ int menuCount = 3;                  // Количество пунктов ме�
 #define MENU_SETTINGS   2           // Пункт меню "Выбор направления вращения заготовки (CW/CCW). Непрерывное вращение" 
 
 //---------- Настройки шагового двигателя ----------
-#define motorStepPin   22           // Output signal to step the motor
-#define motorDirPin    23           // Output signal to set direction
-#define motorEnablePin 24           // Output pin to power up the motor
+#define motorStepPin   22           // Пин выходящего сигнала STEP для шагового мотора
+#define motorDirPin    23           // Пин выходящего сигнала DIR для шагового мотора
+#define motorEnablePin 24           // Пин выходящего сигнала ENABLE для шагового мотора
 
-#define stepsPerRevolution 200      // Number of steps it takes the motor to do one full revolution
-#define microsteps 4                // Depending on your stepper driver, it may support microstepping
-#define gearRatio 1                 // Gear ratio "Motor" : "Dividing head"
+const long stepsPerRevolution = 200;       // Количество шагов, которое требуется двигателю, чтобы совершить один полный оборот
+const long microsteps = 8;                 // Микрошаг драйвера шагового двигателя
+const long gearRatio = 50;                 // Передаточное соотношение «Шаговый двигатель» : «Делительная голова»
 
-// There are 1,000 microseconds in a millisecond and 1,000,000 microseconds in a second
-int pulseWidth = 100;               // Length of time for one step pulse (microseconds)
+// 1000 микросекунд в 1 миллисекунде и 1,000,000 микросекунд в 1 секунде
+int pulseWidth = 100;               // Продолжительность одного импульса (микросекунды)
 
-#define CW HIGH                     // Define direction of rotation
-#define CCW LOW                     // If rotation needs to be reversed, swap HIGH and LOW here
+#define CW HIGH                     // Определим направление вращения
+#define CCW LOW                     // Если нужно изменить направление, меняем местами HIGH и LOW
 
 unsigned long motorSteps;           // Количество импульсов ШД на один оборот детали
 
